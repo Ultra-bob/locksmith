@@ -47,6 +47,10 @@ impl ScoringEngine {
 
     // The highest-scoring category (if any).
     pub fn best(&self, input: &str) -> Option<(&'static str, i32)> {
+        // Empty input
+        if input.is_empty() {
+            return Some(("Empty", 0));
+        }
         self.score_all(input).into_iter().max_by_key(|(_, s)| *s)
     }
 
@@ -125,6 +129,10 @@ impl EnglishScorer {
             .filter(|line| !line.is_empty() && line.len() > 3) // Filter short words.
             .collect();
 
+        EnglishScorer { wordlist }
+    }
+
+    pub fn new_with_wordlist(wordlist: HashSet<String>) -> Self {
         EnglishScorer { wordlist }
     }
 }
@@ -224,8 +232,105 @@ pub fn default_scorer() -> ScoringEngine {
     engine.register(UrlScorer);
     engine.register(YoutubeURLScorer);
     engine.register(EnglishScorer::new());
+    engine.register(BinaryScorer);
+    engine.register(Base64Scorer);
+    engine.register(EnglishStructureScorer);
+    engine.register(MorseCodeScorer);
 
     engine
+}
+
+pub struct BinaryScorer;
+
+impl Scorer for BinaryScorer {
+    fn name(&self) -> &'static str {
+        "Binary Data"
+    }
+    fn score(&self, input: &str) -> i32 {
+        let valid = input.chars().all(|c| c.is_whitespace() || "01".contains(c));
+        if valid {
+            return 40; // Good, but should be further decoded
+        }
+        0
+    }
+}
+
+pub struct Base64Scorer;
+
+impl Scorer for Base64Scorer {
+    fn name(&self) -> &'static str {
+        "Base64 Data"
+    }
+    fn score(&self, input: &str) -> i32 {
+        if input.is_empty() {
+            return 0;
+        }
+        let valid = input
+            .chars()
+            .all(|c| c.is_whitespace() || c.is_ascii_alphanumeric() || "+/=".contains(c));
+        if valid && input.chars().last().expect("Input should not be empty") == '=' {
+            return 30; // Ending with '=' is good, but should be further decoded
+        }
+        if valid {
+            return 20; // Alright, but should be further decoded
+        }
+        0
+    }
+}
+
+pub struct EnglishStructureScorer;
+
+impl Scorer for EnglishStructureScorer {
+    fn name(&self) -> &'static str {
+        "English Text Structure"
+    }
+    fn score(&self, input: &str) -> i32 {
+        // Calculate % of spaces
+        let spaces = input.chars().filter(|c| c.is_whitespace()).count();
+        let total_chars = input.chars().count();
+        let percentage = (spaces as f32 / total_chars as f32) * 100.0;
+        let diff_from_expected = (percentage - 30.0).abs();
+        // dbg!(diff_from_expected);
+        if diff_from_expected < 15.0 {
+            30 // Good structure
+        } else {
+            10 // Poor structure
+        }
+    }
+}
+
+pub struct EnglishTextScorer;
+
+impl Scorer for EnglishTextScorer {
+    fn name(&self) -> &'static str {
+        "English Text"
+    }
+    fn score(&self, input: &str) -> i32 {
+        let valid = input
+            .chars()
+            .all(|c| c.is_whitespace() || c.is_ascii_alphanumeric());
+        if valid {
+            return 50; // Good, but should be further decoded
+        }
+        0
+    }
+}
+
+pub struct MorseCodeScorer;
+
+impl Scorer for MorseCodeScorer {
+    fn name(&self) -> &'static str {
+        "Morse Code"
+    }
+    fn score(&self, input: &str) -> i32 {
+        let valid = input
+            .chars()
+            .all(|c| c.is_whitespace() || c == '.' || c == '-' || c == '/');
+        if valid {
+            return 50; // Good, but should be further decoded
+        }
+        0
+    }
 }
 
 // Unit tests
@@ -243,12 +348,20 @@ mod tests {
         assert_best(
             &engine,
             "https://www.youtube.com/watch?v=U8DHPd4dAl0",
-            "youtube_url",
+            "Youtube URL",
         );
-        assert_best(&engine, "https://youtu.be/U8DHPd4dAl0", "youtube_url");
+        assert_best(&engine, "https://youtu.be/U8DHPd4dAl0", "Youtube URL");
 
-        assert_best(&engine, "regular words", "english");
+        assert_best(&engine, "regular words", "English Text");
 
-        assert_best(&engine, "cmVndWxhciB3b3Jkcw==", "base64");
+        assert_best(&engine, "cmVndWxhciB3b3Jkcw==", "Base64 Data");
+
+        assert_best(&engine, "110110110 100010101", "Binary Data");
+
+        assert_best(
+            &engine,
+            "wnzvr naq nouv frrz gb or serr sbe c3 fb ubcrshyyl gurl pna gnxr gubfr fuvsgf",
+            "English Text Structure",
+        );
     }
 }

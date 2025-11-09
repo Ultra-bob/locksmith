@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 base64 = "0.22.1"
+leptos = { version = "0.8.3", features = ["csr"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["HtmlInputElement", "HtmlTextAreaElement", "EventTarget", "Window", "Response"] }
