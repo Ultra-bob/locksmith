@@ -1,7 +1,7 @@
-use base64::Engine;
 use std::collections::HashMap;
 
-use base64;
+use bs58;
+use fast32;
 
 use crate::engine::{Decoder, DecoderId, Policy, Step, TransformResult};
 
@@ -21,8 +21,8 @@ impl Decoder for Base64Decoder {
         // Prevent immediate repeated base64 decodes by default.
         // Adjust `no_group_repeat_within` if you want to allow chains like base64->base64.
         Policy {
-            no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
+            no_consecutive_same_op: false,
+            no_group_repeat_within: 0,
         }
     }
 
@@ -31,9 +31,9 @@ impl Decoder for Base64Decoder {
         let stripped = input.trim().trim_end_matches('=');
 
         let try_decode = |input: &str| {
-            base64::engine::general_purpose::STANDARD_NO_PAD
-                .decode(input)
-                .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(input))
+            fast32::base64::RFC4648_NOPAD
+                .decode(input.as_bytes())
+                .or_else(|_| fast32::base64::RFC4648_URL_NOPAD.decode(input.as_bytes()))
         };
 
         // dbg!(try_decode(stripped));
@@ -57,6 +57,92 @@ impl Decoder for Base64Decoder {
             }
             Err(_) => vec![],
         }
+    }
+}
+
+pub struct Base58Decoder;
+
+impl Decoder for Base58Decoder {
+    fn id(&self) -> DecoderId {
+        "base58"
+    }
+
+    fn group(&self) -> &'static str {
+        "base"
+    }
+
+    fn policy(&self) -> Policy {
+        Policy {
+            no_consecutive_same_op: false,
+            no_group_repeat_within: 0,
+        }
+    }
+
+    fn apply(&self, input: &str) -> Vec<TransformResult> {
+        let decoded = bs58::decode(input).into_vec();
+        match decoded {
+            Ok(decoded) => {
+                let output = String::from_utf8_lossy(&decoded).into_owned();
+                vec![TransformResult {
+                    output,
+                    step: Step {
+                        op_id: self.id(),
+                        desc: "Base58 decode".to_string(),
+                        group: self.group(),
+                    },
+                }]
+            }
+            Err(_) => vec![],
+        }
+    }
+}
+
+pub struct Base32Decoder;
+
+impl Decoder for Base32Decoder {
+    fn id(&self) -> DecoderId {
+        "base32"
+    }
+
+    fn group(&self) -> &'static str {
+        "base"
+    }
+
+    fn policy(&self) -> Policy {
+        Policy {
+            no_consecutive_same_op: false,
+            no_group_repeat_within: 0,
+        }
+    }
+
+    fn apply(&self, input: &str) -> Vec<TransformResult> {
+        let alphabets = [
+            ("RFC4648", fast32::base32::RFC4648_NOPAD),
+            ("RFC4648HEX", fast32::base32::RFC4648_HEX_NOPAD),
+            ("Crockford", fast32::base32::CROCKFORD),
+            ("Crockford lowercase", fast32::base32::CROCKFORD_LOWER),
+        ];
+
+        let mut results = Vec::new();
+
+        // strip padding
+        let input = input.trim_end_matches('=');
+
+        for (desc_name, alphabet) in alphabets {
+            if let Ok(decoded) = alphabet.decode(input.as_bytes()) {
+                let output = String::from_utf8_lossy(&decoded).into_owned();
+                results.push(TransformResult {
+                    output,
+                    step: Step {
+                        op_id: self.id(),
+                        desc: format!("Base32 decode ({})", desc_name),
+                        group: self.group(),
+                    },
+                });
+            }
+        }
+
+        results
     }
 }
 
@@ -293,6 +379,7 @@ impl MorseCodeDecoder {
         table.insert("---..", '8');
         table.insert("----.", '9');
         table.insert("-----", '0');
+        table.insert("/", ' ');
         MorseCodeDecoder { table }
     }
 }
@@ -395,8 +482,141 @@ pub fn register_all(engine: &mut crate::engine::DecoderEngine) {
     engine.register(CaesarDecoder);
     engine.register(BinaryDecoder);
     engine.register(ReverseDecoder);
-    engine.register(Base64Decoder);
     engine.register(MorseCodeDecoder::new());
     engine.register(HexDecoder);
     engine.register(HTMLEntityDecoder);
+    engine.register(Base32Decoder);
+    engine.register(Base64Decoder);
+    engine.register(Base58Decoder);
+}
+
+/// Metadata for available decoders (for UI selection).
+#[derive(Clone, Copy, Debug)]
+pub struct DecoderInfo {
+    pub id: DecoderId,
+    pub label: &'static str,
+    pub group: &'static str,
+}
+
+/// Returns static metadata for all built-in decoders.
+pub fn all_decoders_info() -> &'static [DecoderInfo] {
+    static INFOS: [DecoderInfo; 9] = [
+        DecoderInfo {
+            id: "caesar",
+            label: "Caesar",
+            group: "shift",
+        },
+        DecoderInfo {
+            id: "binary",
+            label: "Binary to ASCII",
+            group: "binary",
+        },
+        DecoderInfo {
+            id: "reverse",
+            label: "Reverse",
+            group: "reverse",
+        },
+        DecoderInfo {
+            id: "morse",
+            label: "Morse code",
+            group: "morse",
+        },
+        DecoderInfo {
+            id: "hex",
+            label: "Hex",
+            group: "hex",
+        },
+        DecoderInfo {
+            id: "html_entity",
+            label: "HTML entity",
+            group: "html",
+        },
+        DecoderInfo {
+            id: "base32",
+            label: "Base32",
+            group: "base",
+        },
+        DecoderInfo {
+            id: "base64",
+            label: "Base64",
+            group: "base",
+        },
+        DecoderInfo {
+            id: "base58",
+            label: "Base58",
+            group: "base",
+        },
+    ];
+    &INFOS
+}
+
+/// Register only the selected decoders by their IDs.
+pub fn register_selected<'a, I>(engine: &mut crate::engine::DecoderEngine, selected: I)
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    use std::collections::HashSet;
+    let set: HashSet<&str> = selected.into_iter().collect();
+
+    if set.contains("caesar") {
+        engine.register(CaesarDecoder);
+    }
+    if set.contains("binary") {
+        engine.register(BinaryDecoder);
+    }
+    if set.contains("reverse") {
+        engine.register(ReverseDecoder);
+    }
+    if set.contains("morse") {
+        engine.register(MorseCodeDecoder::new());
+    }
+    if set.contains("hex") {
+        engine.register(HexDecoder);
+    }
+    if set.contains("html_entity") {
+        engine.register(HTMLEntityDecoder);
+    }
+    if set.contains("base32") {
+        engine.register(Base32Decoder);
+    }
+    if set.contains("base64") {
+        engine.register(Base64Decoder);
+    }
+    if set.contains("base58") {
+        engine.register(Base58Decoder);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // #[test]
+    // fn test_decoders() {
+    //     let mut engine = crate::engine::DecoderEngine::new();
+    //     register_all(&mut engine);
+    //     let input = "IVYVU2BZNVKE252IGZZFEMKOGE2XIUDTMZZVA6SGGNTWU6BZK5KEW5SXJZLXA6SKGRIEW53FG55E45SIGR2DGTRUKZZWKZJSLE4UKZ3TNUYVQ6KFMFDDMUDYKFZU2YKOLFUGE2RUNJHEOMTCNYYWEZCMMZSVM4TPG5XUIR2MGJRU2YLNGM3VQ4RXKJWXEOCWLBTEIVTJJRCFAUDCJNRWCYRTJNTUCR3TOJSVM2D2NN3HGQLJGJGWCWSRG44UOUCXOIYVES3SNFVWETCEKJZXMYLHKNZDCZCGMI2UG2TFGRKHG3KIJJMWIUQ";
+    //     let outputs = engine.expand(input, &[]);
+    //     dbg!(&outputs);
+    //     assert!(
+    //         outputs
+    //             .iter()
+    //             .any(|output| output.output == "test".to_string())
+    //     );
+    // }
+
+    #[test]
+    fn test_base32_decoder() {
+        let decoder = Base32Decoder;
+        let input = "ORSXG5A=";
+        // The actual implementation generates multiple results with Base32 decode variants.
+        // So here, instead, let's just test that at least one result is "hello world".
+        let outputs: Vec<String> = decoder
+            .apply(input)
+            .into_iter()
+            .map(|tr| tr.output)
+            .collect();
+        // dbg!(&outputs);
+        assert!(outputs.contains(&"test".to_string()));
+    }
 }

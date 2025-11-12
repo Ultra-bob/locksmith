@@ -9,3 +9,8 @@ leptos = { version = "0.8.3", features = ["csr"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["HtmlInputElement", "HtmlTextAreaElement", "EventTarget", "Window", "Response"] }
+gloo-timers = { version = "0.2", features = ["futures"] }
+bs58 = "0.5.1"
+base32 = "0.5.1"
+fast32 = "1.0.3"
+console_error_panic_hook = "0.1.7"
