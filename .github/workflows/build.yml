@@ -29,7 +29,9 @@ jobs:
             targets: wasm32-unknown-unknown
 
         - name: Install Trunk
-          run: cargo install --locked trunk
+          run: |
+            cargo install --locked trunk
+            cargo install wasm-bindgen-cli
 
         - name: Build with Trunk
           run: trunk build --release
