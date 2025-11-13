@@ -1,8 +1,11 @@
 use gloo_timers::future::TimeoutFuture;
 use leptos::mount::mount_to_body;
 use leptos::prelude::*;
+use leptos_workers::worker;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen_futures::spawn_local;
 
 mod decoders;
@@ -11,6 +14,25 @@ mod scorer;
 mod search;
 
 use search::{Chain, SearchConfig, explore};
+
+// --------------- Worker Request/Response ----------------------------------
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DecryptRequest {
+    input: String,
+    max_depth: usize,
+    beam_width: Option<usize>,
+    dedup_on_text: bool,
+    selected_decoder_ids: Vec<String>,
+    wordlist: Option<HashSet<String>>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DecryptResponse {
+    results: Vec<Chain>,
+}
+
+// --------------- Helper functions -----------------------------------------
 
 fn event_target_value(ev: &leptos::ev::Event) -> String {
     if let Some(target) = ev.target() {
@@ -50,31 +72,53 @@ async fn fetch_wordlist_from_url(url: &str) -> Option<HashSet<String>> {
         .ok()?
         .dyn_into()
         .ok()?;
-
     if !resp.ok() {
         return None;
     }
-
     let text_promise = resp.text().ok()?;
     let text_js = JsFuture::from(text_promise).await.ok()?;
     let text = text_js.as_string()?;
-
     let set: HashSet<String> = text
         .lines()
         .map(|w| w.trim().to_lowercase())
         .filter(|w| !w.is_empty() && w.len() > 3)
         .collect();
-
     Some(set)
 }
+
+// --------------- The worker itself ----------------------------------------
+// This runs off-main-thread. It rebuilds the decoder engine and scorer,
+// then runs `explore` and returns the results.
+#[worker(DecryptWorker)]
+pub async fn decrypt_worker(req: DecryptRequest) -> DecryptResponse {
+    let mut dec_engine = engine::DecoderEngine::new();
+    crate::decoders::register_selected(
+        &mut dec_engine,
+        req.selected_decoder_ids.iter().map(|s| s.as_str()),
+    );
+
+    let scorer = build_scorer(req.wordlist);
+    let cfg = SearchConfig {
+        max_depth: req.max_depth,
+        beam_width: req.beam_width,
+        dedup_on_text: req.dedup_on_text,
+    };
+
+    let results = explore(&dec_engine, &scorer, &req.input, cfg);
+    DecryptResponse { results }
+}
+
+// --------------- UI component ---------------------------------------------
 
 #[component]
 fn App() -> impl IntoView {
     let (input_text, set_input_text) = signal(String::new());
     let (depth_text, set_depth_text) = signal(String::from("4"));
     let (beam_text, set_beam_text) = signal(String::from("1000"));
+
     let (results, set_results) = signal::<Vec<Chain>>(vec![]);
     let (wordlist, set_wordlist) = signal::<Option<HashSet<String>>>(None);
+
     // Selected decoders: default to all enabled
     let initial_selected: HashSet<String> = crate::decoders::all_decoders_info()
         .iter()
@@ -86,7 +130,6 @@ fn App() -> impl IntoView {
     {
         const WORDLIST_URL: &str =
             "https://raw.githubusercontent.com/dwyl/english-words/refs/heads/master/words.txt";
-
         Effect::new(move |_| {
             spawn_local(async move {
                 if let Some(set) = fetch_wordlist_from_url(WORDLIST_URL).await {
@@ -96,41 +139,14 @@ fn App() -> impl IntoView {
         });
     }
 
-    let on_submit = move |ev: leptos::ev::SubmitEvent| {
-        ev.prevent_default();
-        let max_depth: usize = depth_text.get_untracked().trim().parse().unwrap_or(4);
-        let beam_opt: Option<usize> = {
-            let s = beam_text.get_untracked();
-            let s = s.trim();
-            if s.is_empty() {
-                None
-            } else {
-                s.parse::<usize>().ok()
-            }
-        };
-
-        let mut dec_engine = engine::DecoderEngine::new();
-        let selected = selected_decoder_ids.get_untracked();
-        crate::decoders::register_selected(&mut dec_engine, selected.iter().map(|s| s.as_str()));
-        let scorer = build_scorer(wordlist.get_untracked().clone());
-        let cfg = SearchConfig {
-            max_depth,
-            beam_width: beam_opt,
-            dedup_on_text: true,
-        };
-
-        let input = input_text.get_untracked();
-        let res = explore(&dec_engine, &scorer, &input, cfg);
-        set_results.set(res);
-    };
-
-    // 1.  NEW SIGNAL ----------------------------------------------------------
+    // Spinner signal
     let (solving, set_solving) = signal(false);
 
-    // 2.  WRAP on_submit TO TOGGLE THE FLAG -----------------------------------
+    // Submit handler now uses the worker
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        set_solving.set(true); // <-- start spinner
+        set_solving.set(true);
+
         let max_depth: usize = depth_text.get_untracked().trim().parse().unwrap_or(4);
         let beam_opt: Option<usize> = {
             let s = beam_text.get_untracked();
@@ -141,54 +157,92 @@ fn App() -> impl IntoView {
                 s.parse::<usize>().ok()
             }
         };
-        let mut dec_engine = engine::DecoderEngine::new();
-        let selected = selected_decoder_ids.get_untracked();
-        crate::decoders::register_selected(&mut dec_engine, selected.iter().map(|s| s.as_str()));
-        let scorer = build_scorer(wordlist.get_untracked().clone());
-        let cfg = SearchConfig {
+
+        let req = DecryptRequest {
+            input: input_text.get_untracked(),
             max_depth,
             beam_width: beam_opt,
             dedup_on_text: true,
+            selected_decoder_ids: selected_decoder_ids
+                .get_untracked()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            wordlist: wordlist.get_untracked().clone(),
         };
-        let input = input_text.get_untracked();
+
         spawn_local(async move {
-            // run solver off-thread
-            TimeoutFuture::new(0).await; // yield to the event loop so the spinner can render
-            let res = explore(&dec_engine, &scorer, &input, cfg);
-            set_results.set(res);
-            set_solving.set(false); // <-- stop spinner
+            // Yield to the event loop so the spinner can render
+            TimeoutFuture::new(0).await;
+
+            match decrypt_worker(req).await {
+                Ok(resp) => {
+                    set_results.set(resp.results);
+                }
+                Err(_e) => {
+                    // Fallback: run on main thread if workers aren't supported
+                    let mut dec_engine = engine::DecoderEngine::new();
+                    let selected = selected_decoder_ids.get_untracked();
+                    crate::decoders::register_selected(
+                        &mut dec_engine,
+                        selected.iter().map(|s| s.as_str()),
+                    );
+                    let scorer = build_scorer(wordlist.get_untracked().clone());
+                    let cfg = SearchConfig {
+                        max_depth,
+                        beam_width: beam_opt,
+                        dedup_on_text: true,
+                    };
+                    let input = input_text.get_untracked();
+                    let res = explore(&dec_engine, &scorer, &input, cfg);
+                    set_results.set(res);
+                }
+            }
+
+            set_solving.set(false);
         });
     };
 
     view! {
-        <main class="min-h-screen bg-gray-50 text-gray-800">
-            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <main class="min-h-screen bg-black text-emerald-100 font-mono">
+            <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 {/* --- Header ---------------------------------------------------- */}
-                <div class="rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 text-white p-6 mb-8 shadow-lg">
-                    <h1 class="text-3xl font-bold tracking-tight">"Locksmith"</h1>
-                    <p class="mt-1 text-emerald-100">"Automatic crypto-puzzle solver"</p>
+                <div class="rounded-lg border border-emerald-600 bg-black/80 px-4 py-3 mb-6">
+                    <h1 class="text-2xl font-bold tracking-[0.2em] uppercase text-emerald-300">
+                        ":: Locksmith ::"
+                    </h1>
+                    <p class="mt-1 text-xs text-emerald-500">
+                        "[ Automatic crypto-puzzle solver ]"
+                    </p>
                 </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* --- Left column : controls -------------------------------- */}
                     <div class="lg:col-span-1">
-                        <form on:submit=on_submit class="bg-white rounded-xl shadow p-6 space-y-5">
+                        <form
+                            on:submit=on_submit
+                            class="bg-black/90 border border-emerald-800 rounded-lg px-4 py-3 space-y-4"
+                        >
                             <div>
-                                <label class="block text-sm font-semibold text-gray-700 mb-1">"Input"</label>
+                                <label class="block text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+                                    "> Input"
+                                </label>
                                 <textarea
                                     placeholder="Paste encoded text here…"
                                     rows="6"
                                     on:input=move |ev| set_input_text.set(event_target_value(&ev))
-                                    class="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono
-                                           focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                    class="w-full rounded-sm border border-emerald-800 bg-black/80 px-2 py-1.5
+                                           text-xs text-emerald-100 placeholder:text-emerald-700
+                                           focus:outline-none focus:ring-1 focus:ring-emerald-500"
                                 />
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-1">
+                                    <label class="block text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
                                         "Depth "
-                                        <span class="font-normal text-gray-500">{move || depth_text.get()}</span>
+                                        <span class="font-normal text-emerald-500">
+                                            {move || depth_text.get()}
+                                        </span>
                                     </label>
                                     <input
                                         type="range"
@@ -196,28 +250,31 @@ fn App() -> impl IntoView {
                                         max="10"
                                         value=move || depth_text.get()
                                         on:input=move |ev| set_depth_text.set(event_target_value(&ev))
-                                        class="w-full accent-emerald-600"
+                                        class="w-full accent-emerald-400 bg-black"
                                     />
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-semibold text-gray-700 mb-1">"Beam Width"</label>
+                                    <label class="block text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
+                                        "Beam Width"
+                                    </label>
                                     <input
                                         type="number"
                                         min="0"
                                         placeholder="e.g. 1000"
                                         value=move || beam_text.get()
                                         on:input=move |ev| set_beam_text.set(event_target_value(&ev))
-                                        class="w-full rounded-lg border border-gray-300 px-3 py-2
-                                               focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                        class="w-full rounded-sm border border-emerald-800 bg-black/80 px-2 py-1.5
+                                               text-xs text-emerald-100 placeholder:text-emerald-700
+                                               focus:outline-none focus:ring-1 focus:ring-emerald-500"
                                     />
                                 </div>
                             </div>
 
-                            <fieldset class="border border-gray-100 rounded-xl p-4 bg-gray-50/70">
-                                <legend class="px-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
+                            <fieldset class="border border-emerald-800 rounded-lg px-3 py-2 bg-black/70">
+                                <legend class="px-1 text-[0.6rem] font-semibold tracking-[0.25em] text-emerald-400 uppercase">
                                     "Decoders"
                                 </legend>
-                                <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                     {move || {
                                         crate::decoders::all_decoders_info()
                                             .iter()
@@ -226,9 +283,9 @@ fn App() -> impl IntoView {
                                                 let label = info.label;
                                                 view! {
                                                     <label
-                                                        class="group flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg
-                                                               bg-white/80 border border-gray-200
-                                                               hover:border-emerald-300 hover:bg-emerald-50/70
+                                                        class="group flex items-center gap-2 px-2 py-1 rounded-sm
+                                                               bg-black/60 border border-emerald-900
+                                                               hover:border-emerald-400 hover:bg-emerald-950/40
                                                                transition-colors cursor-pointer"
                                                     >
                                                         <input
@@ -248,12 +305,12 @@ fn App() -> impl IntoView {
                                                                     }
                                                                 });
                                                             }
-                                                            class="h-4 w-4 rounded-md border-gray-300
-                                                                   text-emerald-600
-                                                                   focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1
+                                                            class="h-3.5 w-3.5 rounded-none border-emerald-700
+                                                                   bg-black text-emerald-400
+                                                                   focus:ring-1 focus:ring-emerald-500 focus:ring-offset-0
                                                                    cursor-pointer"
                                                         />
-                                                        <span class="text-xs font-medium text-gray-800 group-hover:text-emerald-800">
+                                                        <span class="text-[0.7rem] font-medium text-emerald-200 group-hover:text-emerald-100">
                                                             {label}
                                                         </span>
                                                     </label>
@@ -267,13 +324,15 @@ fn App() -> impl IntoView {
                             <button
                                 type="submit"
                                 disabled=move || solving.get()
-                                class="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-emerald-600 text-white
-                                       font-semibold hover:bg-emerald-700 focus:outline-none focus:ring-2
-                                       focus:ring-emerald-500 transition disabled:opacity-60
+                                class="w-full sm:w-auto px-4 py-1.5 rounded-sm
+                                       border border-emerald-500 bg-emerald-700/20 text-emerald-100
+                                       text-xs font-semibold tracking-[0.25em] uppercase
+                                       hover:bg-emerald-500/30 focus:outline-none focus:ring-1
+                                       focus:ring-emerald-400 transition disabled:opacity-50
                                        flex items-center justify-center gap-2"
                             >
                                 <Show when=move || solving.get() fallback=move || view!{ <span>"Decode"</span> }>
-                                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg class="animate-spin h-4 w-4 text-emerald-200" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                     </svg>
@@ -284,16 +343,20 @@ fn App() -> impl IntoView {
                     </div>
 
                     {/* --- Right column : results -------------------------------- */}
-                    <div class="lg:col-span-2 space-y-6">
+                    <div class="lg:col-span-2 space-y-4">
                         {/* Best result card */}
-                        <section class="bg-white rounded-xl shadow p-5">
+                        <section class="bg-black/90 border border-emerald-800 rounded-lg px-4 py-3">
                             <Show
                                 when=move || !results.get().is_empty()
                                 fallback=move || {
                                     view! {
                                         <>
-                                            <h2 class="text-lg font-semibold text-gray-900 mb-2">"Best Result"</h2>
-                                            <p class="text-gray-500 italic">"Run a search to see results."</p>
+                                            <h2 class="text-sm font-semibold text-emerald-300 tracking-[0.2em] uppercase mb-1">
+                                                "> Best Result"
+                                            </h2>
+                                            <p class="text-xs text-emerald-600 italic">
+                                                "[ Run a search to see results ]"
+                                            </p>
                                         </>
                                     }
                                 }
@@ -304,7 +367,7 @@ fn App() -> impl IntoView {
                                     let mut path = String::from("Input");
                                     if !best.steps.is_empty() {
                                         for s in &best.steps {
-                                            path.push_str(" → ");
+                                            path.push_str(" -> ");
                                             path.push_str(&format!("{} ({})", s.desc, s.op_id));
                                         }
                                     } else {
@@ -312,44 +375,52 @@ fn App() -> impl IntoView {
                                     }
                                     view! {
                                         <>
-                                            <h2 class="text-lg font-semibold text-gray-900 mb-2">"Best Result"</h2>
-                                            <div class="flex items-center gap-3 mb-3 text-sm">
-                                                <span class="inline-flex items-center rounded-full bg-emerald-100 text-emerald-800 px-3 py-0.5">
-                                                    <strong class="mr-1">"Score:"</strong>
+                                            <h2 class="text-sm font-semibold text-emerald-300 tracking-[0.2em] uppercase mb-2">
+                                                "> Best Result"
+                                            </h2>
+                                            <div class="flex flex-wrap items-center gap-2 mb-2 text-[0.7rem]">
+                                                <span class="inline-flex items-center rounded-sm border border-emerald-600 bg-black px-2 py-0.5">
+                                                    <strong class="mr-1 text-emerald-400">"Score:"</strong>
                                                     {best.score}
                                                 </span>
-                                                <span class="inline-flex items-center rounded-full bg-gray-100 text-gray-800 px-3 py-0.5">
-                                                    <strong class="mr-1">"Detected as:"</strong>
+                                                <span class="inline-flex items-center rounded-sm border border-emerald-800 bg-black px-2 py-0.5">
+                                                    <strong class="mr-1 text-emerald-400">"Detected:"</strong>
                                                     {best.detected_as}
                                                 </span>
                                             </div>
-                                            <pre class="rounded-lg bg-gray-900 text-gray-100 p-4 text-sm
-                                                        overflow-auto max-h-56">
+                                            <pre class="rounded-sm border border-emerald-900 bg-black text-emerald-100
+                                                        px-3 py-2 text-xs overflow-auto max-h-56">
                                                 {best.text}
                                             </pre>
-                                            <h3 class="mt-4 font-semibold text-gray-800">"Path"</h3>
-                                            <p class="font-mono text-sm text-gray-700">{path}</p>
+                                            <h3 class="mt-3 text-[0.7rem] font-semibold text-emerald-300 uppercase tracking-wide">
+                                                "Path"
+                                            </h3>
+                                            <p class="text-[0.7rem] text-emerald-200">{path}</p>
                                         </>
                                     }
                                 }}
                             </Show>
                         </section>
 
-                        {/* Top 5 section */}
-                        // ---------  NEW  “Other Top 5 Results”  ---------
-                        <section class="bg-white rounded-xl shadow p-5">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">"Other Results"</h2>
-
+                        {/* Other results */}
+                        <section class="bg-black/90 border border-emerald-800 rounded-lg px-4 py-3">
+                            <h2 class="text-sm font-semibold text-emerald-300 tracking-[0.2em] uppercase mb-2">
+                                "> Other Results"
+                            </h2>
                             <Show
                                 when=move || (results.get().len() > 1)
-                                fallback=move || view! { <p class="text-gray-500 italic">"No additional top results yet."</p> }
+                                fallback=move || view! {
+                                    <p class="text-xs text-emerald-600 italic">
+                                        "[ No additional top results yet ]"
+                                    </p>
+                                }
                             >
-                                <div class="grid gap-4 md:grid-cols-2">
+                                <div class="grid gap-3 md:grid-cols-2">
                                     {move || {
                                         let res = results.get();
                                         res.into_iter()
-                                            .skip(1)                 // best result already shown
-                                            .take(4)                 // top-5
+                                            .skip(1)
+                                            .take(4)
                                             .enumerate()
                                             .map(|(idx, chain)| {
                                                 let steps = if chain.steps.is_empty() {
@@ -359,7 +430,7 @@ fn App() -> impl IntoView {
                                                         .iter()
                                                         .map(|s| s.desc.as_str())
                                                         .collect::<Vec<_>>()
-                                                        .join(" → ")
+                                                        .join(" -> ")
                                                 };
                                                 let preview = if chain.text.len() > 120 {
                                                     format!("{}…", &chain.text[..120])
@@ -367,31 +438,29 @@ fn App() -> impl IntoView {
                                                     chain.text.clone()
                                                 };
                                                 view! {
-                                                    <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
-                                                        <div class="flex items-center justify-between mb-2">
-                                                            <span class="text-sm font-medium text-gray-500">
-                                                                {idx + 1}
+                                                    <div class="border border-emerald-900 rounded-sm px-3 py-2 bg-black/70 hover:border-emerald-500 transition-colors">
+                                                        <div class="flex items-center justify-between mb-1">
+                                                            <span class="text-[0.7rem] font-medium text-emerald-500">
+                                                                {"#" }{idx + 1}
                                                             </span>
-                                                            <div class="flex items-center gap-2">
-                                                                <span class="inline-flex items-center rounded-full
-                                                                               bg-emerald-100 text-emerald-800
-                                                                               px-2 py-0.5 text-xs font-semibold">
+                                                            <div class="flex items-center gap-1.5">
+                                                                <span class="inline-flex items-center rounded-sm
+                                                                               border border-emerald-700
+                                                                               px-1.5 py-0.5 text-[0.65rem] text-emerald-200">
                                                                     {chain.score}
                                                                 </span>
-                                                                <span class="inline-flex items-center rounded-full
-                                                                               bg-gray-100 text-gray-700
-                                                                               px-2 py-0.5 text-xs">
+                                                                <span class="inline-flex items-center rounded-sm
+                                                                               border border-emerald-900
+                                                                               px-1.5 py-0.5 text-[0.65rem] text-emerald-300">
                                                                     {chain.detected_as}
                                                                 </span>
                                                             </div>
                                                         </div>
-
-                                                        <p class="text-sm text-gray-800 font-mono bg-gray-50 rounded
-                                                                 px-3 py-2 mb-2 break-all">
+                                                        <p class="text-[0.7rem] text-emerald-100 bg-black/60 rounded-sm
+                                                                 px-2 py-1 mb-1 break-all">
                                                             {preview}
                                                         </p>
-
-                                                        <p class="text-xs text-gray-500">
+                                                        <p class="text-[0.65rem] text-emerald-500">
                                                             <span class="font-semibold">"Steps: "</span>{steps}
                                                         </p>
                                                     </div>
@@ -406,9 +475,9 @@ fn App() -> impl IntoView {
                 </div>
 
                 {/* Footer tip */}
-                <footer class="mt-10 text-sm text-gray-500">
-                    "Tip: Increase beam width to explore more options at each depth. \
-                     Depth controls how many chained transforms are allowed."
+                <footer class="mt-6 text-[0.7rem] text-emerald-600 border-t border-emerald-900 pt-2">
+                    "Tip: Increase beam width to explore more options at each depth. "
+                    "Depth controls how many chained transforms are allowed."
                 </footer>
             </div>
         </main>
@@ -416,6 +485,28 @@ fn App() -> impl IntoView {
 }
 
 pub fn main() {
+    // If we're in a Worker, web_sys::window() is None (workers have WorkerGlobalScope, not Window).
+    if web_sys::window().is_none() {
+        // Running inside a Web Worker: do not mount the Leptos app.
+        // leptos_workers' generated worker harness will run instead.
+        return;
+    }
+
+    // Browser main thread: mount the app as usual.
     console_error_panic_hook::set_once();
-    mount_to_body(|| view! { <App/> })
+    leptos::mount::mount_to_body(|| view! { <App/> })
+}
+
+#[wasm_bindgen(start)]
+pub fn start() {
+    // If we're in a Worker, web_sys::window() is None (workers have WorkerGlobalScope, not Window).
+    if web_sys::window().is_none() {
+        // Running inside a Web Worker: do not mount the Leptos app.
+        // leptos_workers' generated worker harness will run instead.
+        return;
+    }
+
+    // Browser main thread: mount the app as usual.
+    console_error_panic_hook::set_once();
+    leptos::mount::mount_to_body(|| view! { <App/> })
 }

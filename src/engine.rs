@@ -1,7 +1,9 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 /// A stable identifier for a decoder implementation.
-pub type DecoderId = &'static str;
+pub type DecoderId = String;
 
 /// A single transformation step that produced an output.
 ///
@@ -9,14 +11,14 @@ pub type DecoderId = &'static str;
 /// - present user-friendly descriptions
 /// - enforce constraint policies (no consecutive same op, etc.)
 /// - analyze/compose multi-step transforms
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Step {
     /// Identifier of the decoder/operation, e.g., "caesar", "base64".
     pub op_id: DecoderId,
     /// Human-readable description, e.g., "Caesar shift 13".
     pub desc: String,
     /// Group/category for constraint grouping, e.g., "shift", "radix64".
-    pub group: &'static str,
+    pub group: String,
 }
 
 impl fmt::Display for Step {

@@ -10,7 +10,7 @@ pub struct Base64Decoder;
 
 impl Decoder for Base64Decoder {
     fn id(&self) -> DecoderId {
-        "base64"
+        "base64".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -51,7 +51,7 @@ impl Decoder for Base64Decoder {
                     step: Step {
                         op_id: self.id(),
                         desc: "Base64 decode".to_string(),
-                        group: self.group(),
+                        group: self.group().to_string(),
                     },
                 }]
             }
@@ -64,7 +64,7 @@ pub struct Base58Decoder;
 
 impl Decoder for Base58Decoder {
     fn id(&self) -> DecoderId {
-        "base58"
+        "base58".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -88,7 +88,7 @@ impl Decoder for Base58Decoder {
                     step: Step {
                         op_id: self.id(),
                         desc: "Base58 decode".to_string(),
-                        group: self.group(),
+                        group: self.group().to_string(),
                     },
                 }]
             }
@@ -101,7 +101,7 @@ pub struct Base32Decoder;
 
 impl Decoder for Base32Decoder {
     fn id(&self) -> DecoderId {
-        "base32"
+        "base32".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -136,7 +136,7 @@ impl Decoder for Base32Decoder {
                     step: Step {
                         op_id: self.id(),
                         desc: format!("Base32 decode ({})", desc_name),
-                        group: self.group(),
+                        group: self.group().to_string(),
                     },
                 });
             }
@@ -151,7 +151,7 @@ pub struct CaesarDecoder;
 
 impl Decoder for CaesarDecoder {
     fn id(&self) -> DecoderId {
-        "caesar"
+        "caesar".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -189,7 +189,7 @@ impl Decoder for CaesarDecoder {
                 step: Step {
                     op_id: self.id(),
                     desc: format!("Caesar shift {}", shift),
-                    group: self.group(),
+                    group: self.group().to_string(),
                 },
             });
         }
@@ -202,7 +202,7 @@ pub struct BinaryDecoder;
 
 impl Decoder for BinaryDecoder {
     fn id(&self) -> DecoderId {
-        "binary"
+        "binary".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -250,7 +250,7 @@ impl Decoder for BinaryDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Binary to ASCII".to_string(),
-                group: self.group(),
+                group: self.group().to_string(),
             },
         }]
     }
@@ -260,7 +260,7 @@ pub struct ReverseDecoder;
 
 impl Decoder for ReverseDecoder {
     fn id(&self) -> DecoderId {
-        "reverse"
+        "reverse".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -281,7 +281,7 @@ impl Decoder for ReverseDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Reverse".to_string(),
-                group: self.group(),
+                group: self.group().to_string(),
             },
         }]
     }
@@ -291,7 +291,7 @@ pub struct HexDecoder;
 
 impl Decoder for HexDecoder {
     fn id(&self) -> DecoderId {
-        "hex"
+        "hex".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -330,7 +330,7 @@ impl Decoder for HexDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Hex decode".to_string(),
-                group: self.group(),
+                group: self.group().to_string(),
             },
         }]
     }
@@ -386,7 +386,7 @@ impl MorseCodeDecoder {
 
 impl Decoder for MorseCodeDecoder {
     fn id(&self) -> DecoderId {
-        "morse"
+        "morse".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -420,7 +420,7 @@ impl Decoder for MorseCodeDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Decode morse".to_string(),
-                group: self.group(),
+                group: self.group().to_string(),
             },
         }]
     }
@@ -430,7 +430,7 @@ pub struct HTMLEntityDecoder;
 
 impl Decoder for HTMLEntityDecoder {
     fn id(&self) -> DecoderId {
-        "html_entity"
+        "html_entity".to_string()
     }
 
     fn group(&self) -> &'static str {
@@ -471,7 +471,7 @@ impl Decoder for HTMLEntityDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Decode HTML entity".to_string(),
-                group: self.group(),
+                group: self.group().to_string(),
             },
         }]
     }
@@ -491,9 +491,9 @@ pub fn register_all(engine: &mut crate::engine::DecoderEngine) {
 }
 
 /// Metadata for available decoders (for UI selection).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct DecoderInfo {
-    pub id: DecoderId,
+    pub id: &'static str,
     pub label: &'static str,
     pub group: &'static str,
 }

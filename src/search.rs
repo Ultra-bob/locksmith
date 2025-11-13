@@ -1,19 +1,21 @@
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 use crate::engine::{DecoderEngine, Step};
 use crate::scorer::ScoringEngine;
 
 /// A decoded candidate along a chain of transformation steps.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Chain {
     pub text: String,
     pub steps: Vec<Step>,
     pub score: i32,
-    pub detected_as: &'static str,
+    pub detected_as: String,
 }
 
 /// Configuration for the search through decoder expansions.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct SearchConfig {
     /// Maximum number of transformation steps to apply.
     pub max_depth: usize,
@@ -48,7 +50,7 @@ pub fn explore(
         text: input.to_string(),
         steps: vec![],
         score,
-        detected_as: cat,
+        detected_as: cat.to_string(),
     }];
     if cfg.dedup_on_text {
         seen_texts.insert(input.to_string());
@@ -92,7 +94,7 @@ pub fn explore(
                     text: tr.output,
                     steps,
                     score,
-                    detected_as: cat,
+                    detected_as: cat.to_string(),
                 });
             }
         }
