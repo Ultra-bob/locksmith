@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, collections::HashSet, sync::Arc, sync::Mutex};
 
 pub trait Scorer {
     // A stable, human-readable identifier for the category.
@@ -50,6 +50,9 @@ impl ScoringEngine {
         // Empty input
         if input.is_empty() {
             return Some(("Empty", 0));
+        }
+        if input.len() < 5 {
+            return Some(("Short", 10));
         }
         self.score_all(input).into_iter().max_by_key(|(_, s)| *s)
     }
@@ -115,25 +118,84 @@ impl Scorer for UrlScorer {
     }
 }
 
+struct TrieNode {
+    children: HashMap<char, usize>,
+    terminal: bool,
+}
+
 pub struct EnglishScorer {
-    wordlist: HashSet<String>,
+    trie: Vec<TrieNode>,
+    max_word_len: usize,       // in chars
+    dp_buf: Mutex<Vec<usize>>, // reused DP buffer
 }
 
 impl EnglishScorer {
+    /// Internal helper: build scorer from any iterator of words.
+    fn from_words<I, S>(words: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut trie = vec![TrieNode {
+            children: HashMap::new(),
+            terminal: false,
+        }];
+        let mut max_word_len = 0usize;
+
+        for w in words {
+            let w = w.as_ref().to_lowercase(); // normalize once
+            let mut node_idx = 0usize;
+            let mut len_chars = 0usize;
+
+            for ch in w.chars() {
+                len_chars += 1;
+
+                // Avoid the borrow checker issue by not using `or_insert_with`
+                // that captures `trie` mutably inside a closure.
+                let next_idx = match trie[node_idx].children.get(&ch) {
+                    Some(&idx) => idx,
+                    None => {
+                        let new_idx = trie.len();
+                        trie.push(TrieNode {
+                            children: HashMap::new(),
+                            terminal: false,
+                        });
+                        trie[node_idx].children.insert(ch, new_idx);
+                        new_idx
+                    }
+                };
+
+                node_idx = next_idx;
+            }
+
+            if len_chars > 0 {
+                trie[node_idx].terminal = true;
+                max_word_len = max_word_len.max(len_chars);
+            }
+        }
+
+        EnglishScorer {
+            trie,
+            max_word_len,
+            dp_buf: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Old usage: load from `/usr/share/dict/words`, filter short words.
     pub fn new() -> Self {
-        // Load the wordlist from the unix words file
-        let wordlist = std::fs::read_to_string("/usr/share/dict/words")
+        let wordlist: HashSet<String> = std::fs::read_to_string("/usr/share/dict/words")
             .expect("Failed to read wordlist")
             .lines()
-            .map(|line| line.to_string())
+            .map(|line| line.trim().to_string())
             .filter(|line| !line.is_empty() && line.len() > 3) // Filter short words.
             .collect();
 
-        EnglishScorer { wordlist }
+        Self::new_with_wordlist(wordlist)
     }
 
+    /// Old usage: construct from an existing HashSet<String>.
     pub fn new_with_wordlist(wordlist: HashSet<String>) -> Self {
-        EnglishScorer { wordlist }
+        Self::from_words(wordlist.into_iter())
     }
 }
 
@@ -143,58 +205,69 @@ impl Scorer for EnglishScorer {
     }
 
     fn score(&self, input: &str) -> i32 {
-        // Normalize to lowercase for case-insensitive matching
-        let s = input.to_lowercase();
-
-        // Character boundary positions -> byte indices
-        let positions: Vec<usize> = s
-            .char_indices()
-            .map(|(i, _)| i)
-            .chain(std::iter::once(s.len()))
-            .collect();
-        let n_chars = positions.len() - 1;
-        let n_non_whitespace = s.chars().filter(|c| !c.is_whitespace()).count();
-
-        // Compute min/max dictionary word lengths in chars
-        let mut min_w = usize::MAX;
-        let mut max_w = 0usize;
-        for w in &self.wordlist {
-            let len = w.chars().count();
-            if len == 0 {
-                continue;
-            }
-            min_w = min_w.min(len);
-            max_w = max_w.max(len);
-        }
-        if max_w == 0 {
+        if self.max_word_len == 0 {
             return 0;
         }
 
-        // dp[i] = max covered chars in the first i chars (0..i)
-        let mut dp = vec![0usize; n_chars + 1];
+        let lower = input.to_lowercase();
 
-        for i in 0..n_chars {
+        // Single pass: build char vector and count non-whitespace
+        let mut chars = Vec::with_capacity(lower.chars().count());
+        let mut n_non_whitespace = 0usize;
+        for ch in lower.chars() {
+            if !ch.is_whitespace() {
+                n_non_whitespace += 1;
+            }
+            chars.push(ch);
+        }
+
+        if n_non_whitespace == 0 {
+            return 0;
+        }
+
+        let n = chars.len();
+
+        // Reuse DP buffer (thread-safe)
+        let mut dp_guard = self.dp_buf.lock().unwrap();
+        if dp_guard.len() < n + 1 {
+            dp_guard.resize(n + 1, 0);
+        } else {
+            for v in &mut dp_guard[..=n] {
+                *v = 0;
+            }
+        }
+        let dp = &mut *dp_guard;
+
+        // dp[i] = max covered chars in the first i chars (0..i)
+        for i in 0..n {
             // Option 1: skip this char
             if dp[i + 1] < dp[i] {
                 dp[i + 1] = dp[i];
             }
 
-            // Option 2: take any dictionary word starting at i
-            let mut len = min_w;
-            while len <= max_w {
-                let j = i + len;
-                if j > n_chars {
+            // Option 2: follow trie starting at position i
+            let mut node_idx = 0usize;
+            for (offset, &ch) in chars[i..].iter().enumerate() {
+                if let Some(&next_idx) = self.trie[node_idx].children.get(&ch) {
+                    node_idx = next_idx;
+
+                    if self.trie[node_idx].terminal {
+                        let word_len = offset + 1; // in chars
+                        let j = i + word_len;
+                        let covered = dp[i] + word_len;
+                        if j <= n && dp[j] < covered {
+                            dp[j] = covered;
+                        }
+                    }
+                } else {
                     break;
                 }
-                let sub = &s[positions[i]..positions[j]];
-                if self.wordlist.contains(sub) {
-                    dp[j] = dp[j].max(dp[i] + len);
-                }
-                len += 1;
             }
         }
 
-        ((dp[n_chars] as f64) / (n_non_whitespace as f64) * 100.0) as i32
+        let covered = dp[n] as f64;
+        let score = covered / (n_non_whitespace as f64) * 100.0;
+        score as i32
     }
 }
 
@@ -326,7 +399,7 @@ impl Scorer for MorseCodeScorer {
         let valid = input
             .chars()
             .all(|c| c.is_whitespace() || c == '.' || c == '-' || c == '/');
-        if valid {
+        if valid && input.len() > 10 {
             return 50; // Good, but should be further decoded
         }
         0

@@ -255,7 +255,7 @@ fn App() -> impl IntoView {
                                     <input
                                         type="range"
                                         min="0"
-                                        max="10"
+                                        max="25"
                                         value=move || depth_text.get()
                                         on:input=move |ev| set_depth_text.set(event_target_value(&ev))
                                         class="w-full accent-emerald-400 bg-black"
@@ -377,7 +377,7 @@ fn App() -> impl IntoView {
                                     if !best.steps.is_empty() {
                                         for s in &best.steps {
                                             path.push_str(" -> ");
-                                            path.push_str(&format!("{} ({})", s.desc, s.op_id));
+                                            path.push_str(&s.desc);
                                         }
                                     } else {
                                         path.push_str(" (no transforms)");
@@ -406,7 +406,7 @@ fn App() -> impl IntoView {
                                                 {best.text}
                                             </pre>
                                             <h3 class="mt-3 text-[0.7rem] font-semibold text-emerald-300 uppercase tracking-wide">
-                                                "Path"
+                                                "Path " <span class="font-normal">"("{best.steps.len()}" steps)"</span>
                                             </h3>
                                             <p class="text-[0.7rem] text-emerald-200">{path}</p>
                                         </>
@@ -497,17 +497,48 @@ fn App() -> impl IntoView {
     }
 }
 
-pub fn main() {
-    // If we're in a Worker, web_sys::window() is None (workers have WorkerGlobalScope, not Window).
-    if web_sys::window().is_none() {
-        // Running inside a Web Worker: do not mount the Leptos app.
-        // leptos_workers' generated worker harness will run instead.
-        return;
-    }
+fn main() {
+    // Build decoder engine and register available decoders.
+    let mut dec_engine = engine::DecoderEngine::new();
+    decoders::register_all(&mut dec_engine);
 
-    // Browser main thread: mount the app as usual.
-    console_error_panic_hook::set_once();
-    leptos::mount::mount_to_body(|| view! { <App/> })
+    // Build scoring engine.
+    let scorer = scorer::default_scorer();
+
+    // Read from input.txt
+    let input = std::fs::read_to_string("input.txt").expect("Failed to read input.txt");
+
+    // Configure search: explore up to 3 steps deep, keep best 100 candidates per depth,
+    // and avoid revisiting identical output texts.
+    let cfg = SearchConfig {
+        max_depth: 6,
+        beam_width: Some(1000),
+        dedup_on_text: true,
+    };
+
+    // Run the exploration.
+    let results = explore(&dec_engine, &scorer, &input, cfg);
+
+    // Print the top 10 results by score.
+    for r in results.iter().take(10) {
+        let steps = if r.steps.is_empty() {
+            "<none>".to_string()
+        } else {
+            r.steps
+                .iter()
+                .map(|s| s.desc.as_str())
+                .collect::<Vec<_>>()
+                .join(" -> ")
+        };
+
+        println!(
+            "[score: {score:>4}] [{cat}] {text}\n  steps: {steps}",
+            score = r.score,
+            cat = r.detected_as,
+            text = r.text,
+            steps = steps
+        );
+    }
 }
 
 #[wasm_bindgen(start)]

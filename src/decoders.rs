@@ -477,6 +477,32 @@ impl Decoder for HTMLEntityDecoder {
     }
 }
 
+pub struct URLDecoder;
+
+impl Decoder for URLDecoder {
+    fn id(&self) -> String {
+        "url".to_string()
+    }
+
+    fn group(&self) -> &'static str {
+        "URL"
+    }
+
+    fn apply(&self, input: &str) -> Vec<TransformResult> {
+        match urlencoding::decode(input) {
+            Ok(decoded) => vec![TransformResult {
+                output: decoded.to_string().replace("+", " "),
+                step: Step {
+                    op_id: self.id(),
+                    desc: "Decode URL".to_string(),
+                    group: self.group().to_string(),
+                },
+            }],
+            Err(_) => vec![],
+        }
+    }
+}
+
 /// Convenience to register all built-in decoders into a decoder engine.
 pub fn register_all(engine: &mut crate::engine::DecoderEngine) {
     engine.register(CaesarDecoder);
@@ -488,6 +514,7 @@ pub fn register_all(engine: &mut crate::engine::DecoderEngine) {
     engine.register(Base32Decoder);
     engine.register(Base64Decoder);
     engine.register(Base58Decoder);
+    engine.register(URLDecoder);
 }
 
 /// Metadata for available decoders (for UI selection).
@@ -500,7 +527,7 @@ pub struct DecoderInfo {
 
 /// Returns static metadata for all built-in decoders.
 pub fn all_decoders_info() -> &'static [DecoderInfo] {
-    static INFOS: [DecoderInfo; 9] = [
+    static INFOS: [DecoderInfo; 10] = [
         DecoderInfo {
             id: "caesar",
             label: "Caesar",
@@ -546,6 +573,11 @@ pub fn all_decoders_info() -> &'static [DecoderInfo] {
             label: "Base58",
             group: "base",
         },
+        DecoderInfo {
+            id: "url",
+            label: "URL",
+            group: "url",
+        },
     ];
     &INFOS
 }
@@ -584,6 +616,9 @@ where
     }
     if set.contains("base58") {
         engine.register(Base58Decoder);
+    }
+    if set.contains("url") {
+        engine.register(URLDecoder);
     }
 }
 
