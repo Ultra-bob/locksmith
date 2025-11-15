@@ -29,12 +29,12 @@ jobs:
             targets: wasm32-unknown-unknown
 
         - name: Install Trunk
-          run: |
-            cargo install --locked trunk
-            cargo install wasm-bindgen-cli
+          uses: https://github.com/taiki-e/install-action@v2
+          with:
+            tool: wasm-bindgen,trunk
 
         - name: Build with Trunk
-          run: trunk build --release
+          run: trunk build --release --public-url ./
 
         - name: Upload Build
           uses: https://code.forgejo.org/forgejo/upload-artifact@v4
