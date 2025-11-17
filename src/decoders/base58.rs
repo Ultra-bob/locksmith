@@ -11,10 +11,6 @@ impl Decoder for Base58Decoder {
         "base58".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "base"
-    }
-
     fn policy(&self) -> Policy {
         // Allow repeated Base58 decodes if desired by exploration logic.
         Policy {

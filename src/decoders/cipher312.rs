@@ -1,4 +1,4 @@
-use crate::engine::{Decoder, DecoderId, Policy, Step, TransformResult};
+use crate::engine::{Decoder, DecoderId, Step, TransformResult};
 
 pub struct ThreeOneTwoCipher;
 

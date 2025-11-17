@@ -58,12 +58,6 @@ pub trait Decoder: Send + Sync {
     /// Stable identifier for this decoder/operation (e.g., "caesar", "base64").
     fn id(&self) -> DecoderId;
 
-    /// Group name to classify families of operations (e.g., "shift", "radix64").
-    /// Used by default policies to prevent near-duplicate exploration.
-    fn group(&self) -> &'static str {
-        "generic"
-    }
-
     /// Constraint policy that controls when this decoder may follow a history of steps.
     fn policy(&self) -> Policy {
         Policy::default()
@@ -112,14 +106,8 @@ impl DecoderEngine {
     }
 
     /// Register a pre-boxed decoder (e.g., when using trait objects).
-    pub fn register_boxed(&mut self, decoder: Box<dyn Decoder>) {
-        self.decoders.push(decoder);
-    }
 
     /// Immutable access to the internal decoder list.
-    pub fn decoders(&self) -> &[Box<dyn Decoder>] {
-        &self.decoders
-    }
 
     /// Apply all decoders that pass `can_follow(history)` to `input`.
     pub fn expand(&self, input: &str, history: &[Step]) -> Vec<TransformResult> {

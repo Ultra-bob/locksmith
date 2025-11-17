@@ -8,10 +8,6 @@ impl Decoder for Base64Decoder {
         "base64".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "radix64"
-    }
-
     fn policy(&self) -> Policy {
         // Prevent immediate repeated base64 decodes by default.
         // Adjust `no_group_repeat_within` if you want to allow chains like base64->base64.

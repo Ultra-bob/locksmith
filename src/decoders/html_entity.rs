@@ -16,10 +16,6 @@ impl Decoder for HTMLEntityDecoder {
         "html_entity".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "html"
-    }
-
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,

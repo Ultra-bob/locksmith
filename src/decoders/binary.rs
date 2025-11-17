@@ -13,10 +13,6 @@ impl Decoder for BinaryDecoder {
         "binary".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "binary"
-    }
-
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,

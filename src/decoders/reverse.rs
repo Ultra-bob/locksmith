@@ -8,10 +8,6 @@ impl Decoder for ReverseDecoder {
         "reverse".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "reverse"
-    }
-
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,

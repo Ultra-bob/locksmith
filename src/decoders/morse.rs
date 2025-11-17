@@ -62,10 +62,6 @@ impl Decoder for MorseCodeDecoder {
         "morse".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "morse"
-    }
-
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,
@@ -101,7 +97,6 @@ impl Decoder for MorseCodeDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::Decoder as _;
 
     #[test]
     fn decodes_hello_world() {

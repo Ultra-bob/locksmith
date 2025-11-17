@@ -13,10 +13,6 @@ impl Decoder for URLDecoder {
         "url".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "url"
-    }
-
     fn apply(&self, input: &str) -> Vec<TransformResult> {
         match urlencoding::decode(input) {
             Ok(decoded) => vec![TransformResult {

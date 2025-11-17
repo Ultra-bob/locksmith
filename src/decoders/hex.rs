@@ -11,10 +11,6 @@ impl Decoder for HexDecoder {
         "hex".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "hex"
-    }
-
     fn policy(&self) -> Policy {
         // Prevent immediate repeated hex decodes by default.
         Policy {

@@ -16,10 +16,6 @@ impl Decoder for Base32Decoder {
         "base32".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "base"
-    }
-
     fn policy(&self) -> Policy {
         // Allow repeated Base32 decodes if desired by exploration logic.
         Policy {

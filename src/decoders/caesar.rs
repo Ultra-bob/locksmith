@@ -8,10 +8,6 @@ impl Decoder for CaesarDecoder {
         "caesar".to_string()
     }
 
-    fn group(&self) -> &'static str {
-        "shift"
-    }
-
     fn policy(&self) -> Policy {
         // Avoid consecutive Caesar shifts (which are typically redundant)
         // and avoid other "shift" group decoders immediately after.

@@ -1,5 +1,4 @@
 use gloo_timers::future::TimeoutFuture;
-use leptos::mount::mount_to_body;
 use leptos::prelude::*;
 use leptos_use::use_timestamp;
 use leptos_workers::worker;

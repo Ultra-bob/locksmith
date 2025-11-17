@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 /// Trait for heuristic scoring of input strings.
 /// Higher is better. Negative scores are allowed for penalties.
 pub trait Scorer: Send + Sync {
@@ -30,25 +28,6 @@ impl ScoringEngine {
         self.scorers.push(Box::new(scorer));
     }
 
-    /// Convenience for adding scorers as closures.
-    pub fn register_fn<F>(&mut self, name: &'static str, f: F)
-    where
-        F: Fn(&str) -> i32 + Send + Sync + 'static,
-    {
-        self.register(FnScorer::new(name, f));
-    }
-
-    /// Score with all categories, returning (name, score) sorted by descending score.
-    pub fn score_all(&self, input: &str) -> Vec<(&'static str, i32)> {
-        let mut out: Vec<_> = self
-            .scorers
-            .iter()
-            .map(|s| (s.name(), s.score(input)))
-            .collect();
-        out.sort_by(|a, b| b.1.cmp(&a.1));
-        out
-    }
-
     /// The highest-scoring category (if any).
     pub fn best(&self, input: &str) -> Option<(&'static str, i32)> {
         // Keep the previous quick paths for empty/short strings.
@@ -62,47 +41,6 @@ impl ScoringEngine {
             .iter()
             .map(|s| (s.name(), s.score(input)))
             .max_by_key(|(_, s)| *s)
-    }
-
-    /// Score many inputs, and return the one with the highest score.
-    pub fn score_many(&self, inputs: &[&str]) -> Option<(&'static str, i32)> {
-        let mut max_score: Option<(&'static str, i32)> = None;
-        for input in inputs {
-            if let Some((name, score)) = self.best(input) {
-                match max_score {
-                    Some((_, best)) if best >= score => {}
-                    _ => max_score = Some((name, score)),
-                }
-            }
-        }
-        max_score
-    }
-}
-
-/// A scorer implemented from a closure.
-pub struct FnScorer {
-    name: &'static str,
-    f: Arc<dyn Fn(&str) -> i32 + Send + Sync>,
-}
-
-impl FnScorer {
-    pub fn new<F>(name: &'static str, f: F) -> Self
-    where
-        F: Fn(&str) -> i32 + Send + Sync + 'static,
-    {
-        Self {
-            name,
-            f: Arc::new(f),
-        }
-    }
-}
-
-impl Scorer for FnScorer {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-    fn score(&self, input: &str) -> i32 {
-        (self.f)(input)
     }
 }
 
