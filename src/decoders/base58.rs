@@ -19,7 +19,6 @@ impl Decoder for Base58Decoder {
         // Allow repeated Base58 decodes if desired by exploration logic.
         Policy {
             no_consecutive_same_op: false,
-            no_group_repeat_within: 0,
         }
     }
 
@@ -32,7 +31,6 @@ impl Decoder for Base58Decoder {
                     step: Step {
                         op_id: self.id(),
                         desc: "Base58 decode".to_string(),
-                        group: self.group().to_string(),
                     },
                 }]
             }

@@ -69,7 +69,6 @@ impl Decoder for MorseCodeDecoder {
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 
@@ -94,7 +93,6 @@ impl Decoder for MorseCodeDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Decode morse".to_string(),
-                group: self.group().to_string(),
             },
         }]
     }

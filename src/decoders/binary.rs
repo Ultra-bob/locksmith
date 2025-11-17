@@ -20,7 +20,6 @@ impl Decoder for BinaryDecoder {
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 
@@ -57,7 +56,6 @@ impl Decoder for BinaryDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Binary to ASCII".to_string(),
-                group: self.group().to_string(),
             },
         }]
     }

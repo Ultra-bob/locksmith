@@ -24,7 +24,6 @@ impl Decoder for URLDecoder {
                 step: Step {
                     op_id: self.id(),
                     desc: "Decode URL".to_string(),
-                    group: self.group().to_string(),
                 },
             }],
             Err(_) => vec![],

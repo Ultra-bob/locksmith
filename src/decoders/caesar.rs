@@ -17,7 +17,6 @@ impl Decoder for CaesarDecoder {
         // and avoid other "shift" group decoders immediately after.
         Policy {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 
@@ -43,7 +42,6 @@ impl Decoder for CaesarDecoder {
                 step: Step {
                     op_id: self.id(),
                     desc: format!("Caesar shift {}", shift),
-                    group: self.group().to_string(),
                 },
             });
         }

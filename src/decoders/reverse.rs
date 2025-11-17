@@ -15,7 +15,6 @@ impl Decoder for ReverseDecoder {
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 
@@ -25,7 +24,6 @@ impl Decoder for ReverseDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Reverse".to_string(),
-                group: self.group().to_string(),
             },
         }]
     }

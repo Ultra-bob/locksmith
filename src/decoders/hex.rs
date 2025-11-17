@@ -19,7 +19,6 @@ impl Decoder for HexDecoder {
         // Prevent immediate repeated hex decodes by default.
         Policy {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 
@@ -47,7 +46,6 @@ impl Decoder for HexDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Hex decode".to_string(),
-                group: self.group().to_string(),
             },
         }]
     }

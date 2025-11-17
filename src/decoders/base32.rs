@@ -24,7 +24,6 @@ impl Decoder for Base32Decoder {
         // Allow repeated Base32 decodes if desired by exploration logic.
         Policy {
             no_consecutive_same_op: false,
-            no_group_repeat_within: 0,
         }
     }
 
@@ -49,7 +48,6 @@ impl Decoder for Base32Decoder {
                     step: Step {
                         op_id: self.id(),
                         desc: format!("Base32 decode ({})", desc_name),
-                        group: self.group().to_string(),
                     },
                 });
             }

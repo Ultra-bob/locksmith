@@ -23,7 +23,6 @@ impl Decoder for HTMLEntityDecoder {
     fn policy(&self) -> Policy {
         Policy {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 
@@ -56,7 +55,6 @@ impl Decoder for HTMLEntityDecoder {
             step: Step {
                 op_id: self.id(),
                 desc: "Decode HTML entity".to_string(),
-                group: self.group().to_string(),
             },
         }]
     }

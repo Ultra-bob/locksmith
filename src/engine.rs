@@ -17,17 +17,11 @@ pub struct Step {
     pub op_id: DecoderId,
     /// Human-readable description, e.g., "Caesar shift 13".
     pub desc: String,
-    /// Group/category for constraint grouping, e.g., "shift", "radix64".
-    pub group: String,
 }
 
 impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.group.is_empty() {
-            write!(f, "{}: {}", self.op_id, self.desc)
-        } else {
-            write!(f, "{}[{}]: {}", self.op_id, self.group, self.desc)
-        }
+        write!(f, "{}: {}", self.op_id, self.desc)
     }
 }
 
@@ -43,19 +37,12 @@ pub struct TransformResult {
 pub struct Policy {
     /// Forbid applying the exact same decoder right after itself.
     pub no_consecutive_same_op: bool,
-    /// Forbid applying another decoder from the same group within the last N steps.
-    /// Example:
-    /// - 0 disables this rule
-    /// - 1 forbids same-group immediately after
-    /// - 2 forbids same-group if any of the last two steps were of that group, etc.
-    pub no_group_repeat_within: usize,
 }
 
 impl Default for Policy {
     fn default() -> Self {
         Self {
             no_consecutive_same_op: true,
-            no_group_repeat_within: 1,
         }
     }
 }
@@ -97,16 +84,6 @@ pub trait Decoder: Send + Sync {
             if policy.no_consecutive_same_op && last.op_id == self.id() {
                 return false;
             }
-
-            if policy.no_group_repeat_within > 0 {
-                let n = policy.no_group_repeat_within.min(history.len());
-                if history[history.len() - n..]
-                    .iter()
-                    .any(|s| s.group == self.group())
-                {
-                    return false;
-                }
-            }
         }
 
         true
@@ -132,6 +109,11 @@ impl DecoderEngine {
         D: Decoder + 'static,
     {
         self.decoders.push(Box::new(decoder));
+    }
+
+    /// Register a pre-boxed decoder (e.g., when using trait objects).
+    pub fn register_boxed(&mut self, decoder: Box<dyn Decoder>) {
+        self.decoders.push(decoder);
     }
 
     /// Immutable access to the internal decoder list.

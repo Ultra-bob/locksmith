@@ -17,7 +17,6 @@ impl Decoder for Base64Decoder {
         // Adjust `no_group_repeat_within` if you want to allow chains like base64->base64.
         Policy {
             no_consecutive_same_op: false,
-            no_group_repeat_within: 0,
         }
     }
 
@@ -43,7 +42,6 @@ impl Decoder for Base64Decoder {
                     step: Step {
                         op_id: self.id(),
                         desc: "Base64 decode".to_string(),
-                        group: self.group().to_string(),
                     },
                 }]
             }
