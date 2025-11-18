@@ -49,9 +49,10 @@ declare_decoders! {
     { module: binary, id: "binary", label: "Binary", ctor: binary::BinaryDecoder },
     { module: caesar, id: "caesar", label: "Caesar", ctor: caesar::CaesarDecoder },
     { module: hex, id: "hex", label: "Hex", ctor: hex::HexDecoder },
-    { module: html_entity, id: "html_entity", label: "HTML entity", ctor: html_entity::HTMLEntityDecoder },
+    // { module: html_entity, id: "html_entity", label: "HTML entity", ctor: html_entity::HTMLEntityDecoder },
     { module: morse, id: "morse", label: "Morse", ctor: morse::MorseCodeDecoder::new() },
     { module: reverse, id: "reverse", label: "Reverse", ctor: reverse::ReverseDecoder },
     { module: url, id: "url", label: "URL", ctor: url::URLDecoder },
     { module: cipher312, id: "cipher312", label: "312 Cipher", ctor: cipher312::ThreeOneTwoCipher },
+    { module: filter, id: "filter", label: "Filters", ctor: filter::Filter },
 }

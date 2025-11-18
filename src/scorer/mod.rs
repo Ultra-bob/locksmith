@@ -31,10 +31,10 @@ impl ScoringEngine {
     /// The highest-scoring category (if any).
     pub fn best(&self, input: &str) -> Option<(&'static str, i32)> {
         // Keep the previous quick paths for empty/short strings.
-        if input.is_empty() {
+        if input.trim().is_empty() {
             return Some(("Empty", 0));
         }
-        if input.len() < 5 {
+        if input.len() < 3 {
             return Some(("Short", 10));
         }
         self.scorers

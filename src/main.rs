@@ -1,5 +1,6 @@
 use gloo_timers::future::TimeoutFuture;
 use leptos::prelude::*;
+use leptos_use::use_clipboard;
 use leptos_use::use_timestamp;
 use leptos_workers::worker;
 use serde::{Deserialize, Serialize};
@@ -120,6 +121,13 @@ fn App() -> impl IntoView {
     let (decoding_start_timestamp, set_decoding_start_timestamp) = signal(0.0);
     let (decoding_time_ms, set_decoding_time_ms) = signal(0);
 
+    // let leptos_use::UseClipboardReturn {
+    //     is_supported: clipboard_supported,
+    //     text: clipboard_text,
+    //     copied: clipboard_copied,
+    //     copy: clipboard_copy,
+    // } = use_clipboard();
+
     let (results, set_results) = signal::<Vec<Chain>>(vec![]);
     let (wordlist, set_wordlist) = signal::<Option<HashSet<String>>>(None);
 
@@ -133,7 +141,7 @@ fn App() -> impl IntoView {
 
     {
         const WORDLIST_URL: &str =
-            "https://raw.githubusercontent.com/dwyl/english-words/refs/heads/master/words.txt";
+            "https://raw.githubusercontent.com/jeremy-rifkin/Wordlist/refs/heads/master/master.txt";
         Effect::new(move |_| {
             spawn_local(async move {
                 if let Some(set) = fetch_wordlist_from_url(WORDLIST_URL).await {
@@ -164,7 +172,7 @@ fn App() -> impl IntoView {
         };
 
         let req = DecryptRequest {
-            input: input_text.get_untracked(),
+            input: input_text.get_untracked().trim().to_string(),
             max_depth,
             beam_width: beam_opt,
             dedup_on_text: true,
@@ -209,6 +217,10 @@ fn App() -> impl IntoView {
         });
     };
 
+    let example_input = String::from(
+        "==rW5G2lrPRTwUIl1QIKjMNoy42nw9RKrBIJzCSTjGRlhw2JrvymsMDKv92JwCRTgCSTwixJsMDKtMjm0MjnaMNms92KrXSoUarW5iRmsYHl0QHmgCIosMjny5Hlv92JfG2WkUIKzMIluMNKwUIK5QRmrnxmaUIKzMIluGRKrT3mxMNmg9RorPRTkwRTzCIleY3lu9RE",
+    );
+
     view! {
         <main class="min-h-screen bg-black text-emerald-100" style="font-family: 'Fira Mono', monospace;">
             <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -230,9 +242,29 @@ fn App() -> impl IntoView {
                             class="bg-black/90 border border-emerald-800 px-4 py-3 space-y-4"
                         >
                             <div>
-                                <label class="block text-xs font-semibold text-emerald-300 mb-1 uppercase tracking-wide">
-                                    "> Input"
-                                </label>
+                                <div class="flex items-center justify-between">
+                                    <label class="block text-sm font-semibold text-emerald-300 uppercase tracking-wide">
+                                        "> Input"
+                                    </label>
+                                    <button
+                                        type="button"
+                                        class="bg-emerald-700/50 border border-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 my-2 text-xs"
+                                        on:click=move |_| {
+                                            set_input_text.set(example_input.clone());
+                                            // Manually set textarea value to trigger visual update for controlled input
+                                            // (Leptos signals should trigger rerender, but we force HTML update for robustness)
+                                            if let Some(textarea) = web_sys::window()
+                                                .and_then(|w| w.document())
+                                                .and_then(|doc| doc.query_selector("textarea").ok().flatten())
+                                                .and_then(|el| el.dyn_into::<web_sys::HtmlTextAreaElement>().ok())
+                                            {
+                                                textarea.set_value(&example_input);
+                                            }
+                                        }
+                                    >
+                                        "Example"
+                                    </button>
+                                </div>
                                 <textarea
                                     placeholder="Paste encoded text here…"
                                     rows="6"
@@ -420,7 +452,8 @@ fn App() -> impl IntoView {
                                 "> Other Results"
                             </h2>
                             <Show
-                                when=move || (results.get().len() > 1)
+
+                                when=#[allow(unused_parens)] move || (results.get().len() > 1)
                                 fallback=move || view! {
                                     <p class="text-xs text-emerald-600 italic">
                                         "[ No additional results yet ]"
