@@ -1,3 +1,4 @@
+use crate::scorer::EnglishStructureScorer;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
@@ -18,6 +19,7 @@ pub struct EnglishScorer {
     trie: Vec<TrieNode>,
     max_word_len: usize,       // maximum word length (in chars)
     dp_buf: Mutex<Vec<usize>>, // reused DP buffer
+    structure: EnglishStructureScorer,
 }
 
 impl EnglishScorer {
@@ -70,6 +72,7 @@ impl EnglishScorer {
             trie,
             max_word_len,
             dp_buf: Mutex::new(Vec::new()),
+            structure: EnglishStructureScorer,
         }
     }
 
@@ -162,6 +165,18 @@ impl Scorer for EnglishScorer {
 
         let covered = dp[n] as f64;
         let score = covered / (n_non_whitespace as f64) * 100.0;
-        score as i32
+        score as i32 + self.structure.score(input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_score() {
+        let scorer = EnglishScorer::new();
+        let score = scorer.score("Hello, world!");
+        assert_eq!(score, 100);
     }
 }

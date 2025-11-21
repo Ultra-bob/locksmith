@@ -55,4 +55,6 @@ declare_decoders! {
     { module: url, id: "url", label: "URL", ctor: url::URLDecoder },
     { module: cipher312, id: "cipher312", label: "312 Cipher", ctor: cipher312::ThreeOneTwoCipher },
     { module: filter, id: "filter", label: "Filters", ctor: filter::Filter },
+    { module: dec2ascii, id: "dec2ascii", label: "Decimal", ctor: dec2ascii::Dec2AsciiDecoder },
+    { module: oct2ascii, id: "oct2ascii", label: "Octal", ctor: oct2ascii::Oct2AsciiDecoder },
 }

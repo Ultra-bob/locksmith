@@ -25,7 +25,7 @@ impl Scorer for EnglishStructureScorer {
         if diff_from_expected < 15.0 {
             30 // Good structure
         } else {
-            10 // Poor structure
+            0 // Poor structure
         }
     }
 }

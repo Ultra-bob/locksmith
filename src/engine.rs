@@ -42,7 +42,7 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Self {
-            no_consecutive_same_op: true,
+            no_consecutive_same_op: false,
         }
     }
 }
