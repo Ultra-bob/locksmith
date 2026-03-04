@@ -1,7 +1,7 @@
 use super::Scorer;
 
 /// Scores text based on its whitespace structure, favoring inputs where the
-/// percentage of whitespace is close to typical English (~30%).
+/// percentage of whitespace is close to typical English (~15%).
 ///
 /// This is a coarse heuristic intended to help rank candidates; it does not
 /// validate dictionary words or grammar.
@@ -20,10 +20,14 @@ impl Scorer for EnglishStructureScorer {
 
         let spaces = input.chars().filter(|c| c.is_whitespace()).count();
         let percentage = (spaces as f32 / total_chars as f32) * 100.0;
-        let diff_from_expected = (percentage - 30.0).abs();
+        let diff_from_expected = (percentage - 20.0).abs();
 
-        if diff_from_expected < 15.0 {
-            30 // Good structure
+        if diff_from_expected < 10.0 {
+            if total_chars > 10 {
+                40 // Bonus for length
+            } else {
+                30 // Still good
+            }
         } else {
             0 // Poor structure
         }
