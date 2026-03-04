@@ -22,7 +22,7 @@ impl Scorer for YoutubeURLScorer {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || "-_".contains(c));
         if valid && input.len() == 11 {
-            return 100; // Reasonable guess
+            return 30; // Reasonable guess
         }
         if valid {
             return 10; // Weak signal

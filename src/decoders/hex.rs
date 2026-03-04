@@ -12,9 +12,9 @@ impl Decoder for HexDecoder {
     }
 
     fn policy(&self) -> Policy {
-        // Prevent immediate repeated hex decodes by default.
+        // Allow immediate repeated hex decodes by default (turns out this happens).
         Policy {
-            no_consecutive_same_op: true,
+            no_consecutive_same_op: false,
         }
     }
 
