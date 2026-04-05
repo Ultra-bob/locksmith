@@ -1,4 +1,4 @@
-name: CI
+name: Deploy
 
 # Controls when the action will run. 
 on:
@@ -36,12 +36,13 @@ jobs:
         - name: Build with Trunk
           run: trunk build --release --public-url ./
 
-        - name: Upload Build
-          uses: https://code.forgejo.org/forgejo/upload-artifact@v4
-          id: upload-build
+        - name: Deploy with rsync
+          uses: burnett01/rsync-deployments@v8
           with:
-              name: build.zip
-              path: dist
-              retention-days: 3
-              overwrite: true
-              compression-level: 0
+            switches: -avzr --delete
+            path: dist/
+            remote_path: ${{ secrets.RSYNC_REMOTE_PATH }}
+            remote_host: ${{ secrets.RSYNC_REMOTE_HOST }}
+            remote_port: ${{ secrets.RSYNC_REMOTE_PORT }}
+            remote_user: ${{ secrets.RSYNC_REMOTE_USER }}
+            remote_key:  ${{ secrets.RSYNC_REMOTE_KEY  }}
