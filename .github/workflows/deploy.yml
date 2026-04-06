@@ -37,7 +37,7 @@ jobs:
           run: trunk build --release --public-url ./
 
         - name: Deploy with rsync
-          uses: https://github.com/burnett01/rsync-deployments@v8
+          uses: https://github.com/burnett01/rsync-deployments@26b8d85eefac9c6976309fde0a3eee866f61ef52
           with:
             switches: -avzr --delete
             path: dist/
