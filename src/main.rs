@@ -432,10 +432,10 @@ fn App() -> impl IntoView {
                                                     {best.detected_as}
                                                 </span>
                                             </div>
-                                            <div class=" border border-emerald-900 bg-black text-emerald-100
-                                                        px-3 py-2 text-xs overflow-auto max-h-56">
+                                            <pre class=" border border-emerald-900 bg-black text-emerald-100
+                                                        px-3 py-2 text-xs whitespace-pre-wrap max-h-56">
                                                 {best.text}
-                                            </div>
+                                            </pre>
                                             <h3 class="mt-3 text-[0.7rem] font-semibold text-emerald-300 uppercase tracking-wide">
                                                 "Path " <span class="font-normal">"("{best.steps.len()}" steps)"</span>
                                             </h3>
